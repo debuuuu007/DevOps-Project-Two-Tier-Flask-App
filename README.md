@@ -16,14 +16,26 @@
     * [docker-compose.yml](#docker-composeyml)
     * [Jenkinsfile](#jenkinsfile)
 7. [Step 5: Jenkins Pipeline Creation and Execution](#7-step-5-jenkins-pipeline-creation-and-execution)
-8. [Conclusion](#8-conclusion)
-9. [Infrastructure Diagram](#9-infrastructure-diagram)
-10. [Work flow Diagram](#10-work-flow-diagram)
+8. [Step 6: GitHub Webhook Setup for Automatic Builds](#8-step-6-github-webhook-setup-for-automatic-builds)
+9. [Step 7: Verify Automatic Builds on Every Commit](#9-step-7-verify-automatic-builds-on-every-commit)
+10. [Conclusion](#10-conclusion)
+11. [Infrastructure Diagram](#11-infrastructure-diagram)
+12. [Work flow Diagram](#12-work-flow-diagram)
 
 ---
 
 ### **1. Project Overview**
 This document outlines the step-by-step process for deploying a 2-tier web application (Flask + MySQL) on an AWS EC2 instance. The deployment is containerized using Docker and Docker Compose. A full CI/CD pipeline is established using Jenkins to automate the build and deployment process whenever new code is pushed to a GitHub repository.
+
+### **Quick Start Workflow**
+Follow these steps in order to make the pipeline work end to end:
+
+1. **Launch and prepare the EC2 server** with the required ports open.
+2. **Install Docker, Docker Compose, Git, and Jenkins** on the EC2 instance.
+3. **Create the Flask and MySQL container setup** using the repository files.
+4. **Create a Jenkins pipeline job** that pulls the GitHub repository.
+5. **Connect GitHub Webhook to Jenkins** so every push triggers a new build.
+6. **Push a commit and verify** that Jenkins starts a fresh deployment automatically.
 
 ---
 
@@ -239,15 +251,17 @@ networks:
 ```
 
 #### **Jenkinsfile**
-This file contains the pipeline-as-code definition for Jenkins.
+This file contains the pipeline-as-code definition for Jenkins. It is important to enable GitHub-triggered builds by adding the trigger block below.
 ```groovy
 pipeline {
     agent any
+    triggers {
+        githubPush()
+    }
     stages {
         stage('Clone Code') {
             steps {
-                // Replace with your GitHub repository URL
-                git branch: 'main', url: '[https://github.com/your-username/your-repo.git](https://github.com/your-username/your-repo.git)'
+                git branch: 'main', url: 'https://github.com/your-username/your-repo.git'
             }
         }
         stage('Build Docker Image') {
@@ -257,9 +271,7 @@ pipeline {
         }
         stage('Deploy with Docker Compose') {
             steps {
-                // Stop existing containers if they are running
                 sh 'docker compose down || true'
-                // Start the application, rebuilding the flask image
                 sh 'docker compose up -d --build'
             }
         }
@@ -270,6 +282,8 @@ pipeline {
 ---
 
 ### **7. Step 5: Jenkins Pipeline Creation and Execution**
+
+> **Follow this section carefully.** These steps connect Jenkins to your GitHub repository and prepare the pipeline for automatic builds.
 
 1.  **Create a New Pipeline Job in Jenkins:**
     * From the Jenkins dashboard, select **New Item**.
@@ -285,9 +299,10 @@ pipeline {
 
 <img src="diagrams/04.png">
 
-3.  **Run the Pipeline:**
+3.  **Run the Pipeline Manually Once:**
     * Click **Build Now** to trigger the pipeline manually for the first time.
     * Monitor the execution through the **Stage View** or **Console Output**.
+    * This confirms that Jenkins can successfully clone the repository and deploy the application.
 
 <img src="diagrams/05.png">
 <img src="diagrams/06.png">
@@ -298,13 +313,63 @@ pipeline {
 
 ---
 
-### **8. Conclusion**
+### **8. Step 6: GitHub Webhook Setup for Automatic Builds**
+
+This is the key step that makes every GitHub commit trigger a fresh Jenkins build.
+
+1.  **Enable the Jenkins GitHub Trigger:**
+    * Open your Jenkins job.
+    * Under **Build Triggers**, check **GitHub hook trigger for GITScm polling**.
+    * If required, install the **GitHub plugin** from **Manage Jenkins → Plugins**.
+
+2.  **Add a Webhook in GitHub:**
+    * Go to your GitHub repository.
+    * Open **Settings → Webhooks → Add webhook**.
+    * Set the following values:
+        * **Payload URL:** `http://<your-ec2-public-ip>:8080/github-webhook/`
+        * **Content type:** `application/json`
+        * **Which events would you like to trigger this webhook?**: Select **Just the push event**.
+    * Click **Add webhook**.
+
+3.  **Confirm the Connection:**
+    * GitHub will send a test ping to Jenkins.
+    * If the setup is correct, the webhook delivery will appear as successful in GitHub.
+
+4.  **Important Note:**
+    * The Jenkins server must be reachable on port `8080` from the internet.
+    * Make sure your EC2 security group allows inbound traffic on port `8080`.
+
+---
+
+### **9. Step 7: Verify Automatic Builds on Every Commit**
+
+1.  **Make a Small Change:**
+    * Edit any file in the repository, such as the Flask app message or HTML content.
+
+2.  **Commit and Push to GitHub:**
+    ```bash
+    git add .
+    git commit -m "Trigger Jenkins build"
+    git push origin main
+    ```
+
+3.  **Watch Jenkins Automatically:**
+    * Open your Jenkins job and check **Build History**.
+    * A new build should start automatically after the push.
+    * You can also view the **Console Output** to confirm the deployment steps are running.
+
+4.  **Expected Result:**
+    * Every new commit to the `main` branch should trigger a fresh Docker build and deployment.
+
+---
+
+### **10. Conclusion**
 The CI/CD pipeline is now fully operational. Any `git push` to the `main` branch of the configured GitHub repository will automatically trigger the Jenkins pipeline, which will build the new Docker image and deploy the updated application, ensuring a seamless and automated workflow from development to production.
 
 
-### **9. Infrastructure Diagram**
+### **11. Infrastructure Diagram**
 <img src="diagrams/Infrastructure.png">
 
 
-### **10. Work flow Diagram**
+### **12. Work flow Diagram**
 <img src="diagrams/project_workflow.png">
